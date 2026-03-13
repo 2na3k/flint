@@ -6,14 +6,17 @@ services:
       - -c
       - |
         pip install duckdb pyarrow pandas fsspec psutil --quiet --no-cache-dir &&
-        ray start --head --port=6379 --dashboard-host=0.0.0.0 --dashboard-port=8265 --block
+        ray start --head --port=6379 --dashboard-host=0.0.0.0 --dashboard-port=8265 \
+          --metrics-export-port=8080 --block
     ports:
       - "16379:6379"   # Ray GCS (remapped — 6379 used by other services)
       - "8265:8265"    # Ray dashboard
       - "10001:10001"  # Ray client (driver connects here)
+      - "8080:8080"    # Ray metrics (Prometheus scrape)
     volumes:
-      - .:/workspace/flint   # mount flint source so workers can import it
-      - ./data:/data         # shared data directory (driver writes, workers read)
+      - .:/workspace/flint          # flint source (importable on all nodes)
+      - ./data:/data                # shared dataset directory
+      - ./observability/ray-tmp:/tmp/ray  # shared Ray runtime dir (metrics, service discovery)
     environment:
       PYTHONPATH: /workspace/flint
     shm_size: "2g"
@@ -30,7 +33,7 @@ services:
       - -c
       - |
         pip install duckdb pyarrow pandas fsspec psutil --quiet --no-cache-dir &&
-        ray start --address=ray-head:6379 --block
+        ray start --address=ray-head:6379 --metrics-export-port=8080 --block
     depends_on:
       ray-head:
         condition: service_healthy
@@ -42,3 +45,38 @@ services:
     shm_size: "2g"
     deploy:
       replicas: 3
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    command:
+      - --config.file=/tmp/ray/session_latest/metrics/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    volumes:
+      - ./observability/ray-tmp:/tmp/ray:ro  # Ray's prometheus.yml + service discovery JSON
+      - prometheus-data:/prometheus
+    ports:
+      - "19090:9090"   # 9090 taken by other services; access via http://localhost:19090
+    depends_on:
+      ray-head:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    volumes:
+      - ./observability/ray-tmp:/tmp/ray:ro  # Ray's generated dashboard JSONs
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning  # our datasource + dashboard providers
+      - grafana-data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_NAME: "Main Org."
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+    ports:
+      - "3001:3000"    # 3000 may be taken; access via http://localhost:3001
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus-data:   # Prometheus TSDB
+  grafana-data:      # Grafana state (dashboard preferences, etc.)
