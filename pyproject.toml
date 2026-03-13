@@ -1,3 +1,6 @@
+[tool.setuptools.packages.find]
+include = ["flint*"]
+
 [project]
 name = "flint"
 version = "0.1.0"
@@ -10,7 +13,7 @@ dependencies = [
     "pandas>=3.0.1",
     "psutil>=7.2.2",
     "pyarrow>=23.0.1",
-    "ray>=2.54.0",
+    "ray[client]>=2.54.0",
     "ruff>=0.15.5",
 ]
 

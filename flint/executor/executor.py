@@ -285,6 +285,8 @@ def _exec_sql(
     limit_val: Optional[int],
 ) -> pa.Table:
     """Compose and run a single DuckDB query against *table*."""
+    if table.num_columns == 0:
+        return table
     conn = duckdb.connect()
     conn.register("__input__", table)
     sql = f"SELECT {select_expr} FROM __input__"
@@ -433,7 +435,7 @@ def _partition_write_path(base_path: str, partition_id: int) -> str:
     return f"{base}-part-{partition_id:05d}{ext}"
 
 
-def _write_hive_parquet(table: pa.Table, sink: "WriteParquet", task: "Task") -> "DuckDBDataset":
+def _write_hive_parquet(table: pa.Table, sink: "WriteParquet", task: "Task") -> "InMemoryDataset":
     """Write *table* into Hive-partitioned Parquet files.
 
     After the hash-shuffle stage every partition already contains only rows
@@ -441,19 +443,22 @@ def _write_hive_parquet(table: pa.Table, sink: "WriteParquet", task: "Task") -> 
     table by every distinct combination so that we write exactly one file per
     ``col=val/…/part-{id}.parquet`` path.
 
-    Returns a ``DuckDBDataset`` pointing at the first file written (or an
-    empty sentinel) — the caller only uses the return value for bookkeeping.
+    Returns an ``InMemoryDataset`` sentinel — data is already on disk, and the
+    caller only needs this for bookkeeping (especially over Ray where the return
+    value is serialized through the object store, not via file paths).
     """
+    from flint.dataframe import InMemoryDataset
+
     partition_cols = sink.partition_cols  # e.g. ["year", "month"]
+
+    if table.num_columns == 0 or len(table) == 0:
+        return InMemoryDataset(pa.table({}), task.partition_id)
 
     # Group rows by the distinct partition-key combinations using DuckDB
     conn = duckdb.connect()
     conn.register("__input__", table)
     group_cols = ", ".join(f'"{c}"' for c in partition_cols)
     groups = conn.execute(f"SELECT DISTINCT {group_cols} FROM __input__").fetchall()
-
-    first_path: Optional[str] = None
-    total_rows = 0
 
     for group_vals in groups:
         # Build WHERE clause to extract this group's rows
@@ -478,16 +483,7 @@ def _write_hive_parquet(table: pa.Table, sink: "WriteParquet", task: "Task") -> 
         out_path = os.path.join(hive_dir, f"part-{task.partition_id:05d}.parquet")
         pq.write_table(group_table, out_path, compression=sink.compression)
 
-        total_rows += len(group_table)
-        if first_path is None:
-            first_path = out_path
-
-    if first_path is None:
-        # Empty table — nothing written; return a sentinel
-        first_path = sink.path
-        return DuckDBDataset(first_path, task.partition_id, table.schema, num_rows=0)
-
-    return DuckDBDataset(first_path, task.partition_id, table.schema, num_rows=total_rows)
+    return InMemoryDataset(pa.table({}), task.partition_id)
 
 
 def _sql_literal(val: Any) -> str:

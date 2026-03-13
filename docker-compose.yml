@@ -1,30 +1,44 @@
 services:
   ray-head:
     image: rayproject/ray:2.54.0-py312
-    command: >
-      ray start --head
-      --port=6379
-      --dashboard-host=0.0.0.0
-      --dashboard-port=8265
-      --block
+    command:
+      - bash
+      - -c
+      - |
+        pip install duckdb pyarrow pandas fsspec psutil --quiet --no-cache-dir &&
+        ray start --head --port=6379 --dashboard-host=0.0.0.0 --dashboard-port=8265 --block
     ports:
-      - "6379:6379"   # Ray GCS
-      - "8265:8265"   # Ray dashboard
-      - "10001:10001" # Ray client
+      - "16379:6379"   # Ray GCS (remapped — 6379 used by other services)
+      - "8265:8265"    # Ray dashboard
+      - "10001:10001"  # Ray client (driver connects here)
+    volumes:
+      - .:/workspace/flint   # mount flint source so workers can import it
+      - ./data:/data         # shared data directory (driver writes, workers read)
+    environment:
+      PYTHONPATH: /workspace/flint
     shm_size: "2g"
     healthcheck:
       test: ["CMD", "ray", "status"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   ray-worker:
     image: rayproject/ray:2.54.0-py312
-    command: >
-      ray start
-      --address=ray-head:6379
-      --block
+    command:
+      - bash
+      - -c
+      - |
+        pip install duckdb pyarrow pandas fsspec psutil --quiet --no-cache-dir &&
+        ray start --address=ray-head:6379 --block
     depends_on:
       ray-head:
         condition: service_healthy
+    volumes:
+      - .:/workspace/flint
+      - ./data:/data
+    environment:
+      PYTHONPATH: /workspace/flint
     shm_size: "2g"
+    deploy:
+      replicas: 3

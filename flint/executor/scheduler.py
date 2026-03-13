@@ -90,9 +90,27 @@ try:
 
     @ray.remote
     def _ray_execute_task(task: Task) -> object:
+        """Execute a Task on a Ray worker and return an in-memory Dataset.
+
+        The executor writes intermediate results to a temp Parquet file on the
+        *worker's* local filesystem.  Because the driver cannot access that path,
+        we read the table back into memory and return an ``InMemoryDataset`` so
+        Ray ships the data through its object store rather than a file pointer.
+        """
+        import shutil
+        import tempfile
+
+        from flint.dataframe import InMemoryDataset
         from flint.executor.executor import Executor
 
-        return Executor().run(task)
+        # Give this worker its own scratch space that it can actually write to
+        task.temp_dir = tempfile.mkdtemp(prefix="flint_worker_")
+        try:
+            result = Executor().run(task)
+            table = result.to_arrow()
+            return InMemoryDataset(table, task.partition_id)
+        finally:
+            shutil.rmtree(task.temp_dir, ignore_errors=True)
 
 except ImportError:
     # Ray not installed — remote execution unavailable
