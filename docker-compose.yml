@@ -1,0 +1,30 @@
+services:
+  ray-head:
+    image: rayproject/ray:2.54.0-py312
+    command: >
+      ray start --head
+      --port=6379
+      --dashboard-host=0.0.0.0
+      --dashboard-port=8265
+      --block
+    ports:
+      - "6379:6379"   # Ray GCS
+      - "8265:8265"   # Ray dashboard
+      - "10001:10001" # Ray client
+    shm_size: "2g"
+    healthcheck:
+      test: ["CMD", "ray", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ray-worker:
+    image: rayproject/ray:2.54.0-py312
+    command: >
+      ray start
+      --address=ray-head:6379
+      --block
+    depends_on:
+      ray-head:
+        condition: service_healthy
+    shm_size: "2g"
