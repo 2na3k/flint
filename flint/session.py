@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import threading
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 import pandas as pd
 import pyarrow as pa
 
 from flint.dataframe import DataFrame
 from flint.utils import make_temp_dir
+
+if TYPE_CHECKING:
+    from flint.streaming.dataframe import StreamingDataFrame
 
 
 class Session:
@@ -50,6 +53,9 @@ class Session:
         self.temp_dir = temp_dir or make_temp_dir()
         self._ray_address = ray_address
         self._ray_init_kwargs = ray_init_kwargs or {}
+
+        from flint.executor.scheduler import Scheduler
+        self._scheduler = Scheduler(local=local, n_workers=n_workers)
 
         if not local:
             self._init_ray()
@@ -158,6 +164,119 @@ class Session:
         node = ReadPandas(table=table, n_partitions=n_partitions, schema=table.schema)
         return DataFrame._from_node(node, self)
 
+    def read_kafka_stream(
+        self,
+        topic: str,
+        bootstrap_servers: str,
+        schema: pa.Schema,
+        batch_size: int = 100,
+        group_id: Optional[str] = None,
+        consumer_config: Optional[dict] = None,
+    ) -> "StreamingDataFrame":
+        """Create a StreamingDataFrame from a Kafka topic.
+
+        Parameters
+        ----------
+        topic:
+            Kafka topic name.
+        bootstrap_servers:
+            Comma-separated list of broker host:port pairs.
+        schema:
+            PyArrow schema describing the expected message fields.
+        batch_size:
+            Max records to poll per micro-batch.
+        group_id:
+            Consumer group ID.  Defaults to ``flint-<topic>``.
+        consumer_config:
+            Extra confluent-kafka Consumer config overrides.
+        """
+        from flint.streaming.dataframe import StreamingDataFrame
+        from flint.streaming.sources import KafkaSource
+
+        source = KafkaSource(topic, bootstrap_servers, schema, group_id, consumer_config)
+        return StreamingDataFrame(source=source, session=self, batch_size=batch_size)
+
+    def read_websocket_stream(
+        self,
+        uri: str,
+        schema: pa.Schema,
+        batch_size: int = 50,
+        reconnect_delay: float = 1.0,
+    ) -> "StreamingDataFrame":
+        """Create a StreamingDataFrame from a WebSocket endpoint.
+
+        Parameters
+        ----------
+        uri:
+            WebSocket URI (e.g. ``ws://localhost:8765``).
+        schema:
+            PyArrow schema describing the expected JSON message fields.
+        batch_size:
+            Max records to drain per micro-batch.
+        reconnect_delay:
+            Seconds to wait before reconnecting after a disconnection.
+        """
+        from flint.streaming.dataframe import StreamingDataFrame
+        from flint.streaming.sources import WebSocketSource
+
+        source = WebSocketSource(uri, schema, reconnect_delay)
+        source.start()
+        return StreamingDataFrame(source=source, session=self, batch_size=batch_size)
+
+    def read_stream(
+        self,
+        source: "StreamingSource",
+        batch_size: int = 100,
+        n_partitions: int = 1,
+        partition_by: Optional[List[str]] = None,
+        partition_fn: Optional[Any] = None,
+    ) -> "StreamingDataFrame":
+        """Create a StreamingDataFrame from any custom StreamingSource.
+
+        Parameters
+        ----------
+        source:
+            A ``StreamingSource`` instance (already started/connected).
+        batch_size:
+            Max records to drain per micro-batch.
+        n_partitions:
+            Number of parallel workers to distribute each micro-batch across.
+            ``1`` (default) runs single-threaded with zero overhead.
+        partition_by:
+            Column names to hash-partition by. Rows with the same key always
+            land on the same worker. Requires ``n_partitions > 1``.
+        partition_fn:
+            Callable ``(pa.RecordBatch) -> pa.Array[int32]`` assigning each row
+            a partition ID. Mutually exclusive with ``partition_by``.
+        """
+        from flint.streaming.dataframe import StreamingDataFrame
+
+        partition_spec = None
+        if n_partitions > 1:
+            if partition_by is not None and partition_fn is not None:
+                raise ValueError("Provide at most one of partition_by or partition_fn, not both.")
+            if partition_by is not None:
+                from flint.planner.node import HashPartitionSpec
+                partition_spec = HashPartitionSpec(keys=partition_by, n_partitions=n_partitions)
+            elif partition_fn is not None:
+                from flint.planner.node import UserDefinedPartitionSpec
+                partition_spec = UserDefinedPartitionSpec(fn=partition_fn, n_partitions=n_partitions)
+            else:
+                from flint.planner.node import EvenPartitionSpec
+                partition_spec = EvenPartitionSpec(n_partitions=n_partitions)
+
+        return StreamingDataFrame(
+            source=source,
+            session=self,
+            batch_size=batch_size,
+            partition_spec=partition_spec,
+        )
+
+    @property
+    def scheduler(self):
+        """The Scheduler instance used for distributed task execution."""
+        return self._scheduler
+
     def sql(self, query: str, **named_dfs: DataFrame) -> DataFrame:
         """Run a DuckDB SQL query referencing named DataFrames.
 
@@ -189,8 +308,13 @@ class Session:
     # ------------------------------------------------------------------
 
     def stop(self) -> None:
-        """Release resources (temp directory, Ray cluster if started)."""
+        """Release resources (temp directory, scheduler, Ray cluster if started)."""
         import shutil
+
+        try:
+            self._scheduler.stop()
+        except Exception:
+            pass
 
         try:
             shutil.rmtree(self.temp_dir, ignore_errors=True)

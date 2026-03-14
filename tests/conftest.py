@@ -6,6 +6,26 @@ from __future__ import annotations
 import pyarrow as pa
 import pytest
 
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "integration: requires running Kafka (docker compose up kafka)"
+    )
+
+
+@pytest.fixture(scope="session")
+def kafka_bootstrap():
+    """Returns bootstrap servers string. Skips if Kafka not reachable."""
+    servers = "localhost:9094"
+    try:
+        from confluent_kafka.admin import AdminClient
+
+        client = AdminClient({"bootstrap.servers": servers, "socket.timeout.ms": 2000})
+        client.list_topics(timeout=2)
+    except Exception:
+        pytest.skip("Kafka not available — run: docker compose up kafka -d")
+    return servers
+
 from flint.session import Session
 
 

@@ -116,3 +116,18 @@ uv run python -c "..."
 - Follow Spark's naming conventions where applicable (`repartition`, `filter`, `map`, `flatmap`)
 - Type hints are required for all public methods
 - All code must be unit-tested; test files go in `tests/`
+
+## Streaming Anti-Patterns
+
+**Never use `MicroBatchLoop` directly in examples or user-facing code.** It is an internal class.
+The correct streaming API is terminal sink methods on `StreamingDataFrame`:
+
+```python
+# CORRECT — write_stdio starts the blocking loop, Ctrl+C stops it
+session.read_kafka_stream(...).filter("qty > 50").write_stdio(label="hot-trades")
+
+# WRONG — never do this outside of StreamingDataFrame internals
+from flint.streaming.loop import MicroBatchLoop
+loop = MicroBatchLoop(sources=[sdf._source], ...)
+loop.start(...)
+```

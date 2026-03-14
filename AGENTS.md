@@ -126,3 +126,4 @@ Python UDF nodes (`MapNode`, `FlatMapNode`, `MapBatchesNode`, `FilterNode(is_sql
 - Do not use `pip install` — always use `uv add`.
 - Do not mutate `Node` objects after creation — the plan DAG is immutable.
 - Do not store large data (pa.Table) in nodes except for `ReadArrow`/`ReadPandas` sources.
+- **Do not use `MicroBatchLoop` directly in user-facing code or examples.** It is an internal implementation detail of `StreamingDataFrame`. The public API is `write_stdio()` and `write_kafka()` — they register the sink and start the blocking loop. Using `MicroBatchLoop` directly bypasses the clean API and leaks internals.
