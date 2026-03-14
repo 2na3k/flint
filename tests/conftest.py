@@ -26,6 +26,7 @@ def kafka_bootstrap():
         pytest.skip("Kafka not available — run: docker compose up kafka -d")
     return servers
 
+
 from flint.session import Session
 
 

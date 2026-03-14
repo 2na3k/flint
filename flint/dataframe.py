@@ -299,7 +299,9 @@ class DataFrame:
         if partition_spec is not None:
             spec = partition_spec
         elif partition_by is not None:
-            keys = [partition_by] if isinstance(partition_by, str) else list(partition_by)
+            keys = (
+                [partition_by] if isinstance(partition_by, str) else list(partition_by)
+            )
             spec = HashPartitionSpec(n_partitions=n_partitions, keys=keys)
         else:
             spec = EvenPartitionSpec(n_partitions=n_partitions)
@@ -513,11 +515,15 @@ class DataFrame:
             for stage in plan.stages:
                 deps = ", ".join(stage.depends_on) if stage.depends_on else "none"
                 marker = " ◄ OUTPUT" if stage.stage_id == plan.output_stage_id else ""
-                print(f"\nStage {stage.stage_id}  partitions={stage.n_partitions}  depends_on=[{deps}]{marker}")
+                print(
+                    f"\nStage {stage.stage_id}  partitions={stage.n_partitions}  depends_on=[{deps}]{marker}"
+                )
                 for node in stage.pipeline:
                     print(f"  └─ {_format_node_inline(node)}")
         else:
-            raise ValueError(f"Unknown mode {mode!r}. Choose 'logical', 'optimized', or 'physical'.")
+            raise ValueError(
+                f"Unknown mode {mode!r}. Choose 'logical', 'optimized', or 'physical'."
+            )
 
     def __repr__(self) -> str:
         return f"DataFrame(node={self._node!r})"
@@ -569,7 +575,9 @@ def _format_node_inline(node: Any) -> str:
     if isinstance(node, MapNode):
         return f"Map(fn={node.fn.__name__ if hasattr(node.fn, '__name__') else '...'})"
     if isinstance(node, FlatMapNode):
-        return f"FlatMap(fn={node.fn.__name__ if hasattr(node.fn, '__name__') else '...'})"
+        return (
+            f"FlatMap(fn={node.fn.__name__ if hasattr(node.fn, '__name__') else '...'})"
+        )
     if isinstance(node, MapBatchesNode):
         return f"MapBatches(fn=..., batch_size={node.batch_size})"
     if isinstance(node, LimitNode):

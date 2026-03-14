@@ -154,7 +154,7 @@ class StreamingDataFrame:
         )
         if repartition_idx is not None:
             partition_spec = pipeline[repartition_idx].partition_spec
-            pipeline = pipeline[:repartition_idx] + pipeline[repartition_idx + 1:]
+            pipeline = pipeline[:repartition_idx] + pipeline[repartition_idx + 1 :]
 
         scheduler = self._session.scheduler if partition_spec is not None else None
 

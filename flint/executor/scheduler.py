@@ -61,7 +61,9 @@ class Scheduler:
             self.start()
         assert self._executor is not None
 
-        futures: List[Future] = [self._executor.submit(executor.run, task) for task in tasks]
+        futures: List[Future] = [
+            self._executor.submit(executor.run, task) for task in tasks
+        ]
         for task, future in zip(tasks, futures):
             try:
                 task.output_dataset = future.result()

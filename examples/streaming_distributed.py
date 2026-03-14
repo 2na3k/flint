@@ -136,10 +136,9 @@ def scenario_local_single():
     session = flint.Session(local=True)
     source = MockRequestSource(rate=20.0)
     try:
-        session.read_stream(source, batch_size=20, n_partitions=1) \
-            .filter("status >= 200") \
-            .map(tag_worker) \
-            .write_stdio(label="single", max_rows=5, batch_interval=1.5)
+        session.read_stream(source, batch_size=20, n_partitions=1).filter(
+            "status >= 200"
+        ).map(tag_worker).write_stdio(label="single", max_rows=5, batch_interval=1.5)
     except KeyboardInterrupt:
         pass
     finally:
@@ -153,7 +152,9 @@ def scenario_local_threaded():
     print("  local_threaded — n_partitions=4, partition_by=['method']")
     print("  Scheduler: ThreadPoolExecutor  (all same PID, but parallel)")
     print("═" * 64)
-    print("\n  4 threads handle 4 method-partitions per batch.  Press Ctrl+C to stop.\n")
+    print(
+        "\n  4 threads handle 4 method-partitions per batch.  Press Ctrl+C to stop.\n"
+    )
 
     session = flint.Session(local=True)
     source = MockRequestSource(rate=30.0)
@@ -163,9 +164,9 @@ def scenario_local_threaded():
             batch_size=40,
             n_partitions=4,
             partition_by=["method"],
-        ).filter("status >= 200") \
-         .map(tag_worker) \
-         .write_stdio(label="threaded", max_rows=10, batch_interval=2.0)
+        ).filter("status >= 200").map(tag_worker).write_stdio(
+            label="threaded", max_rows=10, batch_interval=2.0
+        )
     except KeyboardInterrupt:
         pass
     finally:
@@ -173,12 +174,13 @@ def scenario_local_threaded():
     print("\n  Done.")
 
 
-KAFKA_BOOTSTRAP  = "localhost:9094"
-OUT_TOPIC        = "test-integration-ray"
+KAFKA_BOOTSTRAP = "localhost:9094"
+OUT_TOPIC = "test-integration-ray"
 
 
 def _ensure_topic(topic: str) -> None:
     from confluent_kafka.admin import AdminClient, NewTopic
+
     admin = AdminClient({"bootstrap.servers": KAFKA_BOOTSTRAP})
     fs = admin.create_topics([NewTopic(topic, num_partitions=4)])
     for t, f in fs.items():
@@ -207,8 +209,10 @@ def scenario_ray_distributed():
 
     try:
         from confluent_kafka.admin import AdminClient
-        AdminClient({"bootstrap.servers": KAFKA_BOOTSTRAP, "socket.timeout.ms": 2000}) \
-            .list_topics(timeout=2)
+
+        AdminClient(
+            {"bootstrap.servers": KAFKA_BOOTSTRAP, "socket.timeout.ms": 2000}
+        ).list_topics(timeout=2)
     except Exception:
         print(f"\n  ✗ Kafka not reachable at {KAFKA_BOOTSTRAP}")
         print("    Start it with:  docker compose up kafka -d")
@@ -235,14 +239,12 @@ def scenario_ray_distributed():
             batch_size=40,
             n_partitions=4,
             partition_by=["method"],
-        ).filter("status >= 200") \
-         .map(tag_worker) \
-         .write_kafka(
-             topic=OUT_TOPIC,
-             bootstrap_servers=KAFKA_BOOTSTRAP,
-             key_column="method",
-             batch_interval=2.0,
-         )
+        ).filter("status >= 200").map(tag_worker).write_kafka(
+            topic=OUT_TOPIC,
+            bootstrap_servers=KAFKA_BOOTSTRAP,
+            key_column="method",
+            batch_interval=2.0,
+        )
     except KeyboardInterrupt:
         pass
     finally:

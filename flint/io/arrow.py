@@ -79,6 +79,8 @@ def write_csv(
         pcsv.write_csv(table, f, write_options=write_options)
 
 
-def infer_schema_from_parquet(path: str, filesystem: Optional[object] = None) -> pa.Schema:
+def infer_schema_from_parquet(
+    path: str, filesystem: Optional[object] = None
+) -> pa.Schema:
     """Read only the schema from a Parquet file without loading data."""
     return pq.read_schema(path, filesystem=filesystem)

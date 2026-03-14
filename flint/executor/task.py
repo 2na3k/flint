@@ -37,9 +37,9 @@ class Task:
     task_id: str
     stage_id: str
     partition_id: int
-    pipeline: List[Any] = field(default_factory=list)       # List[Node]
+    pipeline: List[Any] = field(default_factory=list)  # List[Node]
     input_datasets: List[Any] = field(default_factory=list)  # List[Dataset]
     temp_dir: str = ""
-    output_dataset: Optional[Any] = None                    # Optional[Dataset]
+    output_dataset: Optional[Any] = None  # Optional[Dataset]
     status: TaskStatus = TaskStatus.PENDING
     error: Optional[Exception] = field(default=None, compare=False, repr=False)

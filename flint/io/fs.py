@@ -27,18 +27,18 @@ def resolve_filesystem(uri: str) -> Tuple[Optional[object], str]:
     scheme = uri.split("://")[0].lower()
 
     if scheme == "file":
-        return None, uri[len("file://"):]
+        return None, uri[len("file://") :]
 
     if scheme in ("s3", "s3a"):
-        return fsspec.filesystem("s3"), uri[len(f"{scheme}://"):]
+        return fsspec.filesystem("s3"), uri[len(f"{scheme}://") :]
 
     if scheme in ("gs", "gcs"):
-        return fsspec.filesystem("gcs"), uri[len(f"{scheme}://"):]
+        return fsspec.filesystem("gcs"), uri[len(f"{scheme}://") :]
 
     if scheme in ("az", "abfs", "abfss"):
-        return fsspec.filesystem("abfs"), uri[len(f"{scheme}://"):]
+        return fsspec.filesystem("abfs"), uri[len(f"{scheme}://") :]
 
-    return fsspec.filesystem(scheme), uri[len(f"{scheme}://"):]
+    return fsspec.filesystem(scheme), uri[len(f"{scheme}://") :]
 
 
 def _pyarrow_fs(protocol: Optional[str], path: str):
@@ -226,7 +226,11 @@ def _list_files(path: str, format: str, fs_obj) -> List[str]:
         # It's a directory — list recursively
         selector = pafs.FileSelector(path, recursive=True)
         infos = fs_obj.get_file_info(selector)
-        return sorted(i.path for i in infos if i.type == pafs.FileType.File and i.path.endswith(ext))
+        return sorted(
+            i.path
+            for i in infos
+            if i.type == pafs.FileType.File and i.path.endswith(ext)
+        )
     except Exception:
         return [path]
 
@@ -247,7 +251,7 @@ def _parse_hive_path_raw(file_path: str, base_path: str) -> Dict[str, str]:
     rel = file_path.replace("\\", "/")
     base = base_path.rstrip("/") + "/"
     if rel.startswith(base):
-        rel = rel[len(base):]
+        rel = rel[len(base) :]
     parts = rel.split("/")[:-1]  # exclude filename
     result: Dict[str, str] = {}
     for part in parts:
@@ -307,7 +311,9 @@ def eval_partition_filter(
     conn.register("__parts__", table)
 
     try:
-        rows = conn.execute(f"SELECT __idx__ FROM __parts__ WHERE ({predicate})").fetchall()
+        rows = conn.execute(
+            f"SELECT __idx__ FROM __parts__ WHERE ({predicate})"
+        ).fetchall()
         return [r[0] for r in rows]
     except Exception:
         # Predicate references non-partition columns or has syntax we can't evaluate

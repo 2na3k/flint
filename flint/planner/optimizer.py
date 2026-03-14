@@ -214,7 +214,7 @@ class PartitionPruning(OptimizationRule):
 # ---------------------------------------------------------------------------
 
 _DEFAULT_RULES: List[OptimizationRule] = [
-    PartitionPruning(),   # run first — prunes files before other rewrites
+    PartitionPruning(),  # run first — prunes files before other rewrites
     FilterFusion(),
     PredicatePushdown(),
     ProjectionPushdown(),

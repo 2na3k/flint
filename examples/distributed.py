@@ -34,11 +34,26 @@ OUTPUT_DIR = os.path.join(DATA_DIR, "sales_summary")
 print("Writing Hive-partitioned sales dataset to /data/sales/ ...")
 
 sales_data = {
-    ("year=2023", "region=us"):   (list(range(1, 1001)),    [float(i % 200 + 10)  for i in range(1000)]),
-    ("year=2023", "region=eu"):   (list(range(1001, 2001)), [float(i % 150 + 20)  for i in range(1000)]),
-    ("year=2024", "region=us"):   (list(range(2001, 3001)), [float(i % 300 + 50)  for i in range(1000)]),
-    ("year=2024", "region=eu"):   (list(range(3001, 4001)), [float(i % 250 + 30)  for i in range(1000)]),
-    ("year=2024", "region=apac"): (list(range(4001, 5001)), [float(i % 180 + 15)  for i in range(1000)]),
+    ("year=2023", "region=us"): (
+        list(range(1, 1001)),
+        [float(i % 200 + 10) for i in range(1000)],
+    ),
+    ("year=2023", "region=eu"): (
+        list(range(1001, 2001)),
+        [float(i % 150 + 20) for i in range(1000)],
+    ),
+    ("year=2024", "region=us"): (
+        list(range(2001, 3001)),
+        [float(i % 300 + 50) for i in range(1000)],
+    ),
+    ("year=2024", "region=eu"): (
+        list(range(3001, 4001)),
+        [float(i % 250 + 30) for i in range(1000)],
+    ),
+    ("year=2024", "region=apac"): (
+        list(range(4001, 5001)),
+        [float(i % 180 + 15) for i in range(1000)],
+    ),
 }
 
 products = ["A", "B", "C"]
@@ -47,11 +62,13 @@ for (year_part, region_part), (order_ids, amounts) in sales_data.items():
     dir_path = os.path.join(SALES_DIR, year_part, region_part)
     os.makedirs(dir_path, exist_ok=True)
     n = len(order_ids)
-    table = pa.table({
-        "order_id": order_ids,
-        "amount":   amounts,
-        "product":  [products[i % 3] for i in range(n)],
-    })
+    table = pa.table(
+        {
+            "order_id": order_ids,
+            "amount": amounts,
+            "product": [products[i % 3] for i in range(n)],
+        }
+    )
     pq.write_table(table, os.path.join(dir_path, "part-0.parquet"))
     total_written += n
 
@@ -66,7 +83,7 @@ from flint.session import Session  # noqa: E402
 print("Connecting to Ray cluster (auto) ...")
 session = Session(
     local=False,
-    ray_address="auto",   # inside the container: connects to the local cluster
+    ray_address="auto",  # inside the container: connects to the local cluster
     n_workers=3,
 )
 print(f"  {session}\n")
@@ -91,8 +108,7 @@ df.filter("year = 2024").explain("optimized")
 
 print("\n--- Total sales per product in 2024 (3 partitions, pruned from 5) ---")
 result = (
-    df
-    .filter("year = 2024")
+    df.filter("year = 2024")
     .groupby("product")
     .agg({"amount": "sum", "order_id": "count"})
     .compute()
@@ -105,8 +121,7 @@ print(result.to_pandas().sort_values("product").to_string(index=False))
 
 print("\n--- Average order value by region in 2024 (US vs EU) ---")
 result2 = (
-    df
-    .filter("year = 2024")
+    df.filter("year = 2024")
     .filter("region != 'apac'")
     .groupby("region")
     .agg({"amount": "mean"})
@@ -120,12 +135,13 @@ print(result2.to_pandas().sort_values("region").to_string(index=False))
 
 print("\n--- Distributed map: tag premium orders (amount > 100) ---")
 
+
 def tag_order(row: dict) -> dict:
     return {**row, "tier": "premium" if row["amount"] > 100 else "standard"}
 
+
 premium_count = (
-    df
-    .filter("year = 2024 AND region = 'us'")
+    df.filter("year = 2024 AND region = 'us'")
     .repartition(3, partition_by="product")  # hash-shuffle across 3 workers
     .map(tag_order)
     .filter("tier = 'premium'")
@@ -139,8 +155,7 @@ print(f"  Premium orders in 2024 US: {premium_count}")
 
 print(f"\n--- Writing 2024 data as Hive-partitioned Parquet to {OUTPUT_DIR} ---")
 (
-    df
-    .filter("year = 2024")
+    df.filter("year = 2024")
     .write_parquet(OUTPUT_DIR, partition_cols=["region"], n_partitions=3)
     .compute()
 )

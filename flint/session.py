@@ -55,6 +55,7 @@ class Session:
         self._ray_init_kwargs = ray_init_kwargs or {}
 
         from flint.executor.scheduler import Scheduler
+
         self._scheduler = Scheduler(local=local, n_workers=n_workers)
 
         if not local:
@@ -98,7 +99,9 @@ class Session:
         from flint.io.fs import discover_dataset
         from flint.planner.node import ReadParquet
 
-        files, part_cols, part_vals = discover_dataset(path, format="parquet", filesystem=filesystem)
+        files, part_cols, part_vals = discover_dataset(
+            path, format="parquet", filesystem=filesystem
+        )
         if not files:
             raise ValueError(f"No Parquet files found at {path!r}")
 
@@ -131,7 +134,9 @@ class Session:
         from flint.io.fs import discover_dataset
         from flint.planner.node import ReadCsv
 
-        files, part_cols, part_vals = discover_dataset(path, format="csv", filesystem=filesystem)
+        files, part_cols, part_vals = discover_dataset(
+            path, format="csv", filesystem=filesystem
+        )
         if not files:
             raise ValueError(f"No CSV files found at {path!r}")
 
@@ -193,7 +198,9 @@ class Session:
         from flint.streaming.dataframe import StreamingDataFrame
         from flint.streaming.sources import KafkaSource
 
-        source = KafkaSource(topic, bootstrap_servers, schema, group_id, consumer_config)
+        source = KafkaSource(
+            topic, bootstrap_servers, schema, group_id, consumer_config
+        )
         return StreamingDataFrame(source=source, session=self, batch_size=batch_size)
 
     def read_websocket_stream(
@@ -254,15 +261,24 @@ class Session:
         partition_spec = None
         if n_partitions > 1:
             if partition_by is not None and partition_fn is not None:
-                raise ValueError("Provide at most one of partition_by or partition_fn, not both.")
+                raise ValueError(
+                    "Provide at most one of partition_by or partition_fn, not both."
+                )
             if partition_by is not None:
                 from flint.planner.node import HashPartitionSpec
-                partition_spec = HashPartitionSpec(keys=partition_by, n_partitions=n_partitions)
+
+                partition_spec = HashPartitionSpec(
+                    keys=partition_by, n_partitions=n_partitions
+                )
             elif partition_fn is not None:
                 from flint.planner.node import UserDefinedPartitionSpec
-                partition_spec = UserDefinedPartitionSpec(fn=partition_fn, n_partitions=n_partitions)
+
+                partition_spec = UserDefinedPartitionSpec(
+                    fn=partition_fn, n_partitions=n_partitions
+                )
             else:
                 from flint.planner.node import EvenPartitionSpec
+
                 partition_spec = EvenPartitionSpec(n_partitions=n_partitions)
 
         return StreamingDataFrame(
@@ -293,7 +309,9 @@ class Session:
         from flint.planner.node import SqlNode
 
         if not named_dfs:
-            raise ValueError("Provide at least one named DataFrame: session.sql(q, df=df)")
+            raise ValueError(
+                "Provide at least one named DataFrame: session.sql(q, df=df)"
+            )
 
         # Use the first DataFrame as the primary node; others are in input_names
         primary_name, primary_df = next(iter(named_dfs.items()))
@@ -344,7 +362,9 @@ class Session:
         try:
             import ray
         except ImportError as exc:
-            raise ImportError("Ray is required for distributed mode: uv add ray") from exc
+            raise ImportError(
+                "Ray is required for distributed mode: uv add ray"
+            ) from exc
 
         if ray.is_initialized():
             return

@@ -82,7 +82,9 @@ class Driver:
         if isinstance(first_node, JoinNode):
             left_datasets = stage_results[stage.left_stage_id]
             right_datasets = stage_results[stage.right_stage_id]
-            return self._execute_join_stage(stage, first_node, left_datasets, right_datasets)
+            return self._execute_join_stage(
+                stage, first_node, left_datasets, right_datasets
+            )
 
         # Regular transform stage
         input_datasets = stage_results[stage.depends_on[0]]
@@ -245,9 +247,13 @@ def _assign_partitions(table: pa.Table, spec: object) -> pa.Array:
         batches = table.to_batches()
         if not batches:
             return pa.array([], type=pa.int32())
-        batch = batches[0] if len(batches) == 1 else pa.concat_tables([
-            pa.Table.from_batches([b]) for b in batches
-        ]).to_batches()[0]
+        batch = (
+            batches[0]
+            if len(batches) == 1
+            else pa.concat_tables(
+                [pa.Table.from_batches([b]) for b in batches]
+            ).to_batches()[0]
+        )
         return spec.fn(batch).cast(pa.int32())
 
     raise NotImplementedError(f"Unknown PartitionSpec type: {type(spec).__name__}")
@@ -264,7 +270,9 @@ def _hash_partition(table: pa.Table, keys: List[str], n: int) -> pa.Array:
         concat_expr = " || '|' || ".join(f'CAST("{k}" AS VARCHAR)' for k in keys)
         hash_expr = f"hash({concat_expr})"
 
-    result = conn.execute(f"SELECT CAST({hash_expr} % {n} AS INTEGER) FROM __t__").fetchall()
+    result = conn.execute(
+        f"SELECT CAST({hash_expr} % {n} AS INTEGER) FROM __t__"
+    ).fetchall()
     return pa.array([r[0] for r in result], type=pa.int32())
 
 

@@ -105,14 +105,19 @@ class Executor:
                 pq.write_table(table, part_path, compression=sink.compression)
             else:
                 from flint.io.arrow import write_csv
+
                 write_csv(table, part_path, sink.delimiter, sink.include_header)
-            return DuckDBDataset(part_path, task.partition_id, table.schema, num_rows=len(table))
+            return DuckDBDataset(
+                part_path, task.partition_id, table.schema, num_rows=len(table)
+            )
 
         # Step 4 — write to temp Parquet
         out_path = generate_temp_path(task.temp_dir)
         os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
         pq.write_table(table, out_path)
-        return DuckDBDataset(out_path, task.partition_id, table.schema, num_rows=len(table))
+        return DuckDBDataset(
+            out_path, task.partition_id, table.schema, num_rows=len(table)
+        )
 
     def _apply_pipeline(self, table: pa.Table, pipeline: list, task: Task) -> pa.Table:
         """Apply a sequence of nodes to *table*, fusing SQL ops where possible."""
@@ -185,7 +190,9 @@ class Executor:
     def _execute_join(self, node: JoinNode, task: Task) -> Dataset:
         """Execute a local (post-shuffle) join on co-located partitions."""
         if len(task.input_datasets) < 2:
-            raise ValueError("JoinNode task requires two input datasets (left and right)")
+            raise ValueError(
+                "JoinNode task requires two input datasets (left and right)"
+            )
 
         left_table = task.input_datasets[0].to_arrow()
         right_table = task.input_datasets[1].to_arrow()
@@ -194,7 +201,9 @@ class Executor:
         out_path = generate_temp_path(task.temp_dir)
         os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
         pq.write_table(result, out_path)
-        return DuckDBDataset(out_path, task.partition_id, result.schema, num_rows=len(result))
+        return DuckDBDataset(
+            out_path, task.partition_id, result.schema, num_rows=len(result)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -305,13 +314,13 @@ def _exec_groupby(table: pa.Table, node: GroupByAggNode) -> pa.Table:
     agg_exprs = []
     for out_col, agg_fn, in_col in node.aggregations:
         if in_col == "*":
-            agg_exprs.append(f"{agg_fn}(*) AS \"{out_col}\"")
+            agg_exprs.append(f'{agg_fn}(*) AS "{out_col}"')
         else:
-            agg_exprs.append(f"{agg_fn}(\"{in_col}\") AS \"{out_col}\"")
+            agg_exprs.append(f'{agg_fn}("{in_col}") AS "{out_col}"')
 
     group_cols = ", ".join(f'"{k}"' for k in node.group_keys)
     select_cols = group_cols + (", " + ", ".join(agg_exprs) if agg_exprs else "")
-    sql = f'SELECT {select_cols} FROM __input__'
+    sql = f"SELECT {select_cols} FROM __input__"
     if node.group_keys:
         sql += f" GROUP BY {group_cols}"
     return _duckdb_to_table(conn.execute(sql).arrow())
@@ -364,7 +373,9 @@ def _exec_join(
         right_selects.append(f'__right__."{c}" AS "{alias}"')
 
     select_expr = ", ".join(left_selects + right_selects)
-    sql = f"SELECT {select_expr} FROM __left__ {join_type} JOIN __right__ ON {conditions}"
+    sql = (
+        f"SELECT {select_expr} FROM __left__ {join_type} JOIN __right__ ON {conditions}"
+    )
     return _duckdb_to_table(conn.execute(sql).arrow())
 
 
@@ -435,7 +446,9 @@ def _partition_write_path(base_path: str, partition_id: int) -> str:
     return f"{base}-part-{partition_id:05d}{ext}"
 
 
-def _write_hive_parquet(table: pa.Table, sink: "WriteParquet", task: "Task") -> "InMemoryDataset":
+def _write_hive_parquet(
+    table: pa.Table, sink: "WriteParquet", task: "Task"
+) -> "InMemoryDataset":
     """Write *table* into Hive-partitioned Parquet files.
 
     After the hash-shuffle stage every partition already contains only rows

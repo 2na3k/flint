@@ -31,8 +31,7 @@ class StreamingSource(ABC):
     def _build_record_batch(self, rows: list[dict]) -> pa.RecordBatch:
         """Build a RecordBatch from a list of dicts using this source's schema."""
         arrays = [
-            pa.array([r.get(f.name) for r in rows], type=f.type)
-            for f in self._schema
+            pa.array([r.get(f.name) for r in rows], type=f.type) for f in self._schema
         ]
         return pa.record_batch(arrays, schema=self._schema)
 

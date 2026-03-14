@@ -62,7 +62,9 @@ class UserDefinedPartitionSpec(PartitionSpec):
     Must be serializable (cloudpickle) for distributed execution.
     """
 
-    fn: Any = field(default=None, compare=False, repr=False)  # Callable[[pa.RecordBatch], pa.Array]
+    fn: Any = field(
+        default=None, compare=False, repr=False
+    )  # Callable[[pa.RecordBatch], pa.Array]
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +162,9 @@ class MapNode(Node):
     """Apply fn(row: dict) -> dict to every row."""
 
     fn: Any = field(default=None, compare=False, repr=False)
-    output_schema: Any = field(default=None, compare=False, repr=False)  # Optional[pa.Schema]
+    output_schema: Any = field(
+        default=None, compare=False, repr=False
+    )  # Optional[pa.Schema]
 
 
 @dataclass
@@ -230,7 +234,9 @@ class JoinNode(Node):
     left_suffix: str = "_left"
     right_suffix: str = "_right"
     broadcast: bool = False
-    partition_spec: Any = field(default=None)  # Optional[PartitionSpec], overrides default HashPartitionSpec
+    partition_spec: Any = field(
+        default=None
+    )  # Optional[PartitionSpec], overrides default HashPartitionSpec
 
 
 @dataclass

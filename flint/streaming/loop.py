@@ -26,7 +26,11 @@ def _assign_partitions(table: pa.Table, spec: "PartitionSpec") -> pa.Array:
     - HashPartitionSpec      → DuckDB hash % n
     - UserDefinedPartitionSpec → user fn(RecordBatch) -> int32 Array
     """
-    from flint.planner.node import EvenPartitionSpec, HashPartitionSpec, UserDefinedPartitionSpec
+    from flint.planner.node import (
+        EvenPartitionSpec,
+        HashPartitionSpec,
+        UserDefinedPartitionSpec,
+    )
 
     n = spec.n_partitions
     total = len(table)
@@ -37,6 +41,7 @@ def _assign_partitions(table: pa.Table, spec: "PartitionSpec") -> pa.Array:
 
     if isinstance(spec, HashPartitionSpec):
         import duckdb
+
         conn = duckdb.connect()
         conn.register("__input__", table)
         key_expr = ", ".join(f'"{k}"' for k in spec.keys)
@@ -197,14 +202,16 @@ class MicroBatchLoop:
             if len(slice_) == 0:
                 continue
             dataset = InMemoryDataset(slice_, partition_id=p)
-            tasks.append(Task(
-                task_id=generate_id(),
-                stage_id="streaming",
-                partition_id=p,
-                pipeline=self._pipeline,
-                input_datasets=[dataset],
-                temp_dir=self._temp_dir,
-            ))
+            tasks.append(
+                Task(
+                    task_id=generate_id(),
+                    stage_id="streaming",
+                    partition_id=p,
+                    pipeline=self._pipeline,
+                    input_datasets=[dataset],
+                    temp_dir=self._temp_dir,
+                )
+            )
         return tasks
 
     def _poll_sources(self) -> Optional[pa.Table]:

@@ -32,8 +32,8 @@ class ExecutionStage:
     """
 
     stage_id: str
-    pipeline: List[Node]        # nodes to execute in sequence per partition
-    depends_on: List[str]       # stage_ids that must complete first
+    pipeline: List[Node]  # nodes to execute in sequence per partition
+    depends_on: List[str]  # stage_ids that must complete first
     n_partitions: int
     # For join stages: which prior stages provide left/right data
     left_stage_id: Optional[str] = None
@@ -120,7 +120,9 @@ class Planner:
 
         # Append to the child stage if it hasn't been "closed" by a shuffle
         last_node = child_stage.pipeline[-1] if child_stage.pipeline else None
-        if last_node is not None and not isinstance(last_node, (ShuffleNode, RepartitionNode)):
+        if last_node is not None and not isinstance(
+            last_node, (ShuffleNode, RepartitionNode)
+        ):
             child_stage.pipeline.append(node)
             return child_stage_id
 
@@ -140,7 +142,11 @@ class Planner:
         child_stage = self._get_stage(child_stage_id)
 
         spec = node.partition_spec
-        n = spec.n_partitions if (spec and spec.n_partitions > 0) else child_stage.n_partitions
+        n = (
+            spec.n_partitions
+            if (spec and spec.n_partitions > 0)
+            else child_stage.n_partitions
+        )
 
         # Materialise n into the spec so the executor knows the target count
         if spec and spec.n_partitions == 0:
@@ -191,13 +197,17 @@ class Planner:
 
         # Determine target partition count — use max of both sides if auto
         spec = node.partition_spec
-        n = spec.n_partitions if (spec and spec.n_partitions > 0) else max(
-            left_stage.n_partitions, right_stage.n_partitions
+        n = (
+            spec.n_partitions
+            if (spec and spec.n_partitions > 0)
+            else max(left_stage.n_partitions, right_stage.n_partitions)
         )
 
         # Insert hash shuffle on left side
         left_spec = HashPartitionSpec(keys=node.left_keys, n_partitions=n)
-        left_shuffle = ShuffleNode(children=[node.children[0]], partition_spec=left_spec)
+        left_shuffle = ShuffleNode(
+            children=[node.children[0]], partition_spec=left_spec
+        )
         left_shuffle_stage = ExecutionStage(
             stage_id=generate_id(),
             pipeline=[left_shuffle],
@@ -207,7 +217,9 @@ class Planner:
 
         # Insert hash shuffle on right side (same n and same hash fn)
         right_spec = HashPartitionSpec(keys=node.right_keys, n_partitions=n)
-        right_shuffle = ShuffleNode(children=[node.children[1]], partition_spec=right_spec)
+        right_shuffle = ShuffleNode(
+            children=[node.children[1]], partition_spec=right_spec
+        )
         right_shuffle_stage = ExecutionStage(
             stage_id=generate_id(),
             pipeline=[right_shuffle],

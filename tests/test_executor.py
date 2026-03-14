@@ -56,7 +56,9 @@ def test_limit(session):
 
 def test_map(session):
     table = pa.table({"a": [1, 2, 3]})
-    df = session.from_arrow(table).map(lambda row: {"a": row["a"], "doubled": row["a"] * 2})
+    df = session.from_arrow(table).map(
+        lambda row: {"a": row["a"], "doubled": row["a"] * 2}
+    )
     result = df.to_arrow()
     assert result.column("doubled").to_pylist() == [2, 4, 6]
 
@@ -73,6 +75,7 @@ def test_map_batches(session):
 
     def double_batch(batch: pa.RecordBatch) -> pa.RecordBatch:
         import pyarrow.compute as pc
+
         col = pc.multiply(batch.column("a"), 2)
         return pa.record_batch({"a": col})
 

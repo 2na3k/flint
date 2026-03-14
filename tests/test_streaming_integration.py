@@ -22,7 +22,7 @@ from flint.streaming.sources import StreamingSource
 
 # Consumer rebalance on Kafka 4 takes ~3s on first connection.
 # Tests wait long enough after loop start to guarantee messages are received.
-_LOOP_WAIT = 6.0       # seconds to run the loop
+_LOOP_WAIT = 6.0  # seconds to run the loop
 _BATCH_INTERVAL = 0.2  # fast polling so we don't miss the rebalance window
 
 
@@ -153,9 +153,14 @@ class TestKafkaRoundTrip:
         in_topic = _unique_topic("flint-in")
         out_topic = _unique_topic("flint-out")
         schema = pa.schema([pa.field("value", pa.int64())])
-        messages = [{"value": i - 9} for i in range(20)]  # -9..10; exactly 10 positive (1..10)
+        messages = [
+            {"value": i - 9} for i in range(20)
+        ]  # -9..10; exactly 10 positive (1..10)
 
-        with temp_topic(kafka_bootstrap, in_topic), temp_topic(kafka_bootstrap, out_topic):
+        with (
+            temp_topic(kafka_bootstrap, in_topic),
+            temp_topic(kafka_bootstrap, out_topic),
+        ):
             produce_messages(kafka_bootstrap, in_topic, messages)
 
             from flint.planner.node import FilterNode

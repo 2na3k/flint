@@ -408,7 +408,6 @@ class TestStreamingDataFrame:
         assert len(sdf._pipeline) == 0
 
 
-
 # ---------------------------------------------------------------------------
 # Integration-style: filter + select end-to-end (no Kafka)
 # ---------------------------------------------------------------------------
@@ -485,7 +484,9 @@ class TestSessionStreamingMethods:
         with patch("flint.streaming.sources.WebSocketSource.start"):
             session = Session(local=True, temp_dir=str(tmp_path))
             schema = pa.schema([pa.field("msg", pa.string())])
-            sdf = session.read_websocket_stream(uri="ws://localhost:9999", schema=schema)
+            sdf = session.read_websocket_stream(
+                uri="ws://localhost:9999", schema=schema
+            )
             from flint.streaming.dataframe import StreamingDataFrame
             from flint.streaming.sources import WebSocketSource
 
@@ -536,7 +537,9 @@ class TestDistributedMicroBatch:
         from flint.planner.node import HashPartitionSpec
         from flint.streaming.loop import _assign_partitions
 
-        table = pa.table({"user_id": [1, 2, 3, 1, 2, 3], "val": [10, 20, 30, 40, 50, 60]})
+        table = pa.table(
+            {"user_id": [1, 2, 3, 1, 2, 3], "val": [10, 20, 30, 40, 50, 60]}
+        )
         spec = HashPartitionSpec(keys=["user_id"], n_partitions=4)
         ids1 = _assign_partitions(table, spec)
         ids2 = _assign_partitions(table, spec)
@@ -547,7 +550,9 @@ class TestDistributedMicroBatch:
         from flint.streaming.loop import _assign_partitions
 
         table = pa.table({"user_id": [1, 2, 3, 1, 2, 3]})
-        ids = _assign_partitions(table, HashPartitionSpec(keys=["user_id"], n_partitions=4))
+        ids = _assign_partitions(
+            table, HashPartitionSpec(keys=["user_id"], n_partitions=4)
+        )
         pid = ids.to_pylist()
         # rows 0 and 3 have user_id=1, rows 1 and 4 have user_id=2, etc.
         assert pid[0] == pid[3]  # user_id=1
@@ -584,7 +589,11 @@ class TestDistributedMicroBatch:
             partition_spec=EvenPartitionSpec(n_partitions=10),
             scheduler=None,
         )
-        with patch.object(loop, "_execute_pipeline_distributed", wraps=loop._execute_pipeline_distributed) as mock_dist:
+        with patch.object(
+            loop,
+            "_execute_pipeline_distributed",
+            wraps=loop._execute_pipeline_distributed,
+        ) as mock_dist:
             loop._run_one_batch()
         # effective_n = min(10, 2) = 2, but no scheduler → falls back inside distributed
         assert len(sink.batches) == 1
@@ -609,7 +618,9 @@ class TestDistributedMicroBatch:
 
         def fake_submit(tasks):
             for t in tasks:
-                t.output_dataset = InMemoryDataset(t.input_datasets[0].to_arrow(), t.partition_id)
+                t.output_dataset = InMemoryDataset(
+                    t.input_datasets[0].to_arrow(), t.partition_id
+                )
             return tasks
 
         mock_scheduler.submit_batch.side_effect = fake_submit
@@ -739,7 +750,12 @@ class TestDistributedMicroBatch:
     def test_repartition_node_stripped_from_pipeline(self, tmp_path):
         from unittest.mock import patch
 
-        from flint.planner.node import EvenPartitionSpec, FilterNode, RepartitionNode, SelectNode
+        from flint.planner.node import (
+            EvenPartitionSpec,
+            FilterNode,
+            RepartitionNode,
+            SelectNode,
+        )
         from flint.streaming.dataframe import StreamingDataFrame
 
         session = self._make_session(tmp_path)
@@ -748,7 +764,11 @@ class TestDistributedMicroBatch:
         sdf = StreamingDataFrame(
             source=source,
             session=session,
-            pipeline=[FilterNode(predicate="v > 0", is_sql=True), RepartitionNode(partition_spec=spec), SelectNode(columns=["v"])],
+            pipeline=[
+                FilterNode(predicate="v > 0", is_sql=True),
+                RepartitionNode(partition_spec=spec),
+                SelectNode(columns=["v"]),
+            ],
             sinks=[],
         )
 
@@ -758,10 +778,18 @@ class TestDistributedMicroBatch:
         def capturing_init(self_loop, **kwargs):
             captured.update(kwargs)
             # prevent actual loop from running
-            original_init(self_loop, **{**kwargs, "sources": [FakeSource(pa.table({"v": pa.array([], pa.int64())}))]})
+            original_init(
+                self_loop,
+                **{
+                    **kwargs,
+                    "sources": [FakeSource(pa.table({"v": pa.array([], pa.int64())}))],
+                },
+            )
 
-        with patch.object(MicroBatchLoop, "__init__", capturing_init), \
-             patch.object(MicroBatchLoop, "start"):
+        with (
+            patch.object(MicroBatchLoop, "__init__", capturing_init),
+            patch.object(MicroBatchLoop, "start"),
+        ):
             sdf.write_stdio(label="x")
 
         assert captured["partition_spec"] == spec

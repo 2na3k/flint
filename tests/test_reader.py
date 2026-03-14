@@ -91,10 +91,13 @@ def test_read_single_csv(session, tmp_path):
 def test_hive_parquet_detection(session, tmp_path):
     """Session should detect Hive partitioning from key=value directories."""
     root = str(tmp_path / "dataset")
-    make_hive_parquet(root, {
-        ("year=2023",): pa.table({"id": [1, 2], "val": [10, 20]}),
-        ("year=2024",): pa.table({"id": [3, 4], "val": [30, 40]}),
-    })
+    make_hive_parquet(
+        root,
+        {
+            ("year=2023",): pa.table({"id": [1, 2], "val": [10, 20]}),
+            ("year=2024",): pa.table({"id": [3, 4], "val": [30, 40]}),
+        },
+    )
 
     df = session.read_parquet(root)
     node = df._node
@@ -106,10 +109,13 @@ def test_hive_parquet_detection(session, tmp_path):
 def test_hive_parquet_columns_added(session, tmp_path):
     """Partition key-value columns must appear in every row of the result."""
     root = str(tmp_path / "dataset")
-    make_hive_parquet(root, {
-        ("year=2023",): pa.table({"id": [1, 2]}),
-        ("year=2024",): pa.table({"id": [3, 4]}),
-    })
+    make_hive_parquet(
+        root,
+        {
+            ("year=2023",): pa.table({"id": [1, 2]}),
+            ("year=2024",): pa.table({"id": [3, 4]}),
+        },
+    )
 
     result = session.read_parquet(root).to_arrow()
     assert "year" in result.schema.names
@@ -121,11 +127,14 @@ def test_hive_parquet_columns_added(session, tmp_path):
 def test_hive_parquet_multi_level(session, tmp_path):
     """Multi-level Hive partitioning: year= / month=."""
     root = str(tmp_path / "dataset")
-    make_hive_parquet(root, {
-        ("year=2024", "month=1"): pa.table({"id": [1]}),
-        ("year=2024", "month=2"): pa.table({"id": [2]}),
-        ("year=2025", "month=1"): pa.table({"id": [3]}),
-    })
+    make_hive_parquet(
+        root,
+        {
+            ("year=2024", "month=1"): pa.table({"id": [1]}),
+            ("year=2024", "month=2"): pa.table({"id": [2]}),
+            ("year=2025", "month=1"): pa.table({"id": [3]}),
+        },
+    )
 
     result = session.read_parquet(root).to_arrow()
     assert "year" in result.schema.names
@@ -136,10 +145,13 @@ def test_hive_parquet_multi_level(session, tmp_path):
 def test_hive_parquet_filter_reads_correct_data(session, tmp_path):
     """Filtering on partition columns should return only matching rows."""
     root = str(tmp_path / "dataset")
-    make_hive_parquet(root, {
-        ("year=2023",): pa.table({"id": [1, 2]}),
-        ("year=2024",): pa.table({"id": [3, 4]}),
-    })
+    make_hive_parquet(
+        root,
+        {
+            ("year=2023",): pa.table({"id": [1, 2]}),
+            ("year=2024",): pa.table({"id": [3, 4]}),
+        },
+    )
 
     result = session.read_parquet(root).filter("year = 2024").to_arrow()
     assert result.num_rows == 2
@@ -149,11 +161,14 @@ def test_hive_parquet_filter_reads_correct_data(session, tmp_path):
 def test_hive_parquet_partition_pruning(session, tmp_path):
     """PartitionPruning optimizer rule should reduce the file list before execution."""
     root = str(tmp_path / "dataset")
-    make_hive_parquet(root, {
-        ("year=2023",): pa.table({"id": [1, 2]}),
-        ("year=2024",): pa.table({"id": [3, 4]}),
-        ("year=2025",): pa.table({"id": [5, 6]}),
-    })
+    make_hive_parquet(
+        root,
+        {
+            ("year=2023",): pa.table({"id": [1, 2]}),
+            ("year=2024",): pa.table({"id": [3, 4]}),
+            ("year=2025",): pa.table({"id": [5, 6]}),
+        },
+    )
 
     df = session.read_parquet(root).filter("year = 2024")
     df.explain("optimized")
@@ -176,10 +191,13 @@ def test_hive_parquet_partition_pruning(session, tmp_path):
 
 def test_hive_csv_detection(session, tmp_path):
     root = str(tmp_path / "csv_dataset")
-    make_hive_csv(root, {
-        ("region=us",): pa.table({"id": [1, 2], "v": [10, 20]}),
-        ("region=eu",): pa.table({"id": [3, 4], "v": [30, 40]}),
-    })
+    make_hive_csv(
+        root,
+        {
+            ("region=us",): pa.table({"id": [1, 2], "v": [10, 20]}),
+            ("region=eu",): pa.table({"id": [3, 4], "v": [30, 40]}),
+        },
+    )
 
     df = session.read_csv(root)
     assert df._node.hive_partitioning is True
@@ -188,10 +206,13 @@ def test_hive_csv_detection(session, tmp_path):
 
 def test_hive_csv_columns_added(session, tmp_path):
     root = str(tmp_path / "csv_dataset")
-    make_hive_csv(root, {
-        ("region=us",): pa.table({"id": [1, 2]}),
-        ("region=eu",): pa.table({"id": [3, 4]}),
-    })
+    make_hive_csv(
+        root,
+        {
+            ("region=us",): pa.table({"id": [1, 2]}),
+            ("region=eu",): pa.table({"id": [3, 4]}),
+        },
+    )
 
     result = session.read_csv(root).to_arrow()
     assert "region" in result.schema.names
@@ -207,9 +228,12 @@ def test_hive_csv_columns_added(session, tmp_path):
 
 def test_explain_shows_hive_info(session, tmp_path, capsys):
     root = str(tmp_path / "dataset")
-    make_hive_parquet(root, {
-        ("year=2024",): pa.table({"id": [1]}),
-    })
+    make_hive_parquet(
+        root,
+        {
+            ("year=2024",): pa.table({"id": [1]}),
+        },
+    )
 
     df = session.read_parquet(root)
     df.explain("logical")
@@ -249,13 +273,17 @@ def test_write_parquet_hive_data_correct(session, tmp_path):
 def test_write_parquet_hive_multi_level(session, tmp_path):
     """Multi-level Hive partition: year= / month=."""
     out = str(tmp_path / "out")
-    table = pa.table({
-        "year": [2024, 2024, 2025],
-        "month": [1, 2, 1],
-        "id": [10, 20, 30],
-    })
+    table = pa.table(
+        {
+            "year": [2024, 2024, 2025],
+            "month": [1, 2, 1],
+            "id": [10, 20, 30],
+        }
+    )
 
-    session.from_arrow(table).write_parquet(out, partition_cols=["year", "month"]).compute()
+    session.from_arrow(table).write_parquet(
+        out, partition_cols=["year", "month"]
+    ).compute()
 
     assert os.path.isdir(os.path.join(out, "year=2024", "month=1"))
     assert os.path.isdir(os.path.join(out, "year=2024", "month=2"))
