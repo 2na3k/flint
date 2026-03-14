@@ -102,6 +102,8 @@ class MicroBatchLoop:
         self._partition_spec = partition_spec
         self._scheduler = scheduler
         self._stop_event = threading.Event()
+        self._batch_num: int = 0
+        self._source_label: str = type(sources[0]).__name__ if sources else "streaming"
 
     # ------------------------------------------------------------------
     # Public interface
@@ -142,24 +144,36 @@ class MicroBatchLoop:
                 self._stop_event.wait(timeout=sleep_time)
 
     def _run_one_batch(self) -> None:
-        try:
-            table = self._poll_sources()
-            if table is None:
-                return
+        from flint.telemetry.observer import StateObserver
 
-            spec = self._partition_spec
-            if spec is not None and spec.n_partitions > 1:
-                result = self._execute_pipeline_distributed(table)
-            else:
-                result = self._execute_pipeline(table)
+        observer = StateObserver.get()
+        self._batch_num += 1
+        with observer.observe_batch(
+            batch_num=self._batch_num,
+            source_label=self._source_label,
+        ) as obs_ctx:
+            try:
+                table = self._poll_sources()
+                if table is None:
+                    return
 
-            for sink in self._sinks:
-                sink.write(result)
-        except Exception as exc:
-            if self._error_handler is not None:
-                self._error_handler(exc)
-            else:
-                raise
+                obs_ctx["rows_in"] = len(table)
+
+                spec = self._partition_spec
+                if spec is not None and spec.n_partitions > 1:
+                    result = self._execute_pipeline_distributed(table)
+                else:
+                    result = self._execute_pipeline(table)
+
+                obs_ctx["rows_out"] = len(result)
+
+                for sink in self._sinks:
+                    sink.write(result)
+            except Exception as exc:
+                if self._error_handler is not None:
+                    self._error_handler(exc)
+                else:
+                    raise
 
     def _execute_pipeline_distributed(self, table: pa.Table) -> pa.Table:
         """Split batch into N partitions, run pipeline in parallel, coalesce."""

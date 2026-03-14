@@ -127,6 +127,47 @@ class StreamingDataFrame:
         )
         self._run(batch_interval=batch_interval)
 
+    def explain(self) -> None:
+        """Print a summary of the streaming pipeline.
+
+        Shows the source, transform pipeline, partition spec, and registered sinks.
+        """
+        from flint.dataframe import _format_node_inline
+
+        src = type(self._source).__name__
+        src_detail = ""
+        if hasattr(self._source, "_topic"):
+            src_detail = f"(topic={self._source._topic})"
+        elif hasattr(self._source, "_uri"):
+            src_detail = f"(uri={self._source._uri})"
+
+        print("== Streaming Pipeline ==")
+        print(f"Source:  {src}{src_detail}")
+        print(f"Batch size: {self._batch_size}")
+
+        if self._pipeline:
+            print("Transforms:")
+            for node in self._pipeline:
+                print(f"  └─ {_format_node_inline(node)}")
+        else:
+            print("Transforms: (none)")
+
+        if self._partition_spec is not None:
+            print(f"Partition: {self._partition_spec!r}")
+
+        if self._sinks:
+            print("Sinks:")
+            for sink in self._sinks:
+                sk = type(sink).__name__
+                sk_detail = ""
+                if hasattr(sink, "_topic"):
+                    sk_detail = f"(topic={sink._topic})"
+                elif hasattr(sink, "_label"):
+                    sk_detail = f"(label={sink._label!r})"
+                print(f"  └─ {sk}{sk_detail}")
+        else:
+            print("Sinks: (none registered yet)")
+
     # ------------------------------------------------------------------
     # Execution
     # ------------------------------------------------------------------

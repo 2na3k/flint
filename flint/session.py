@@ -47,12 +47,15 @@ class Session:
         temp_dir: Optional[str] = None,
         ray_address: Optional[str] = None,
         ray_init_kwargs: Optional[dict] = None,
+        telemetry: bool = False,
+        telemetry_log: Optional[str] = None,
     ) -> None:
         self.local = local
         self.n_workers = n_workers
         self.temp_dir = temp_dir or make_temp_dir()
         self._ray_address = ray_address
         self._ray_init_kwargs = ray_init_kwargs or {}
+        self._telemetry_sink_id: Optional[int] = None
 
         from flint.executor.scheduler import Scheduler
 
@@ -60,6 +63,9 @@ class Session:
 
         if not local:
             self._init_ray()
+
+        if telemetry:
+            self.enable_telemetry(log_path=telemetry_log)
 
     # ------------------------------------------------------------------
     # Read methods
@@ -288,6 +294,75 @@ class Session:
             partition_spec=partition_spec,
         )
 
+    # ------------------------------------------------------------------
+    # Telemetry
+    # ------------------------------------------------------------------
+
+    def enable_telemetry(self, log_path: Optional[str] = None) -> None:
+        """Start emitting job events to the logger (and optionally a JSON file).
+
+        Parameters
+        ----------
+        log_path:
+            If given, every ``JobEvent`` is also appended as a JSON line to
+            this file.  Pass ``None`` to log to stderr only.
+
+        Example
+        -------
+        ::
+
+            session = Session()
+            session.enable_telemetry(log_path="/tmp/flint_events.jsonl")
+        """
+        from flint.telemetry import add_json_sink
+
+        if log_path and self._telemetry_sink_id is None:
+            self._telemetry_sink_id = add_json_sink(log_path)
+
+    def disable_telemetry(self) -> None:
+        """Detach the JSON sink (if any). Stderr logging is always active."""
+        from flint.telemetry import remove_sink
+
+        if self._telemetry_sink_id is not None:
+            remove_sink(self._telemetry_sink_id)
+            self._telemetry_sink_id = None
+
+    def telemetry_summary(self) -> dict:
+        """Return aggregate counters from the ``StateObserver``.
+
+        Example
+        -------
+        ::
+
+            summary = session.telemetry_summary()
+            print(summary["total_tasks"], summary["failed_tasks"])
+        """
+        from flint.telemetry import StateObserver
+
+        return StateObserver.get().summary()
+
+    def on_job_event(self, handler) -> None:
+        """Register a callable that receives every ``JobEvent``.
+
+        Parameters
+        ----------
+        handler:
+            ``(event: JobEvent) -> None``
+
+        Example
+        -------
+        ::
+
+            def log_failures(event):
+                if event.status.value == "failed":
+                    print("FAILED:", event.job_id, event.error)
+
+            session.on_job_event(log_failures)
+        """
+        from flint.telemetry import StateObserver
+
+        StateObserver.get().subscribe(handler)
+
     @property
     def scheduler(self):
         """The Scheduler instance used for distributed task execution."""
@@ -328,6 +403,8 @@ class Session:
     def stop(self) -> None:
         """Release resources (temp directory, scheduler, Ray cluster if started)."""
         import shutil
+
+        self.disable_telemetry()
 
         try:
             self._scheduler.stop()

@@ -17,6 +17,7 @@ dependencies = [
     "ruff>=0.15.5",
     "confluent-kafka>=2.6.0",
     "websockets>=13.0",
+    "loguru>=0.7.3",
 ]
 
 [dependency-groups]

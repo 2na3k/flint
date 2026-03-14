@@ -51,16 +51,34 @@ class Executor:
 
     def run(self, task: Task) -> Dataset:
         """Execute *task* and return the output ``Dataset``."""
+        from flint.telemetry.observer import StateObserver
+
+        observer = StateObserver.get()
         task.status = TaskStatus.RUNNING
-        try:
-            result = self._execute(task)
-            task.output_dataset = result
-            task.status = TaskStatus.DONE
-            return result
-        except Exception as exc:
-            task.status = TaskStatus.FAILED
-            task.error = exc
-            raise
+        with observer.observe_task(
+            task_id=task.task_id,
+            stage_id=task.stage_id,
+            partition_id=task.partition_id,
+        ) as obs_ctx:
+            try:
+                obs_ctx["rows_in"] = sum(
+                    len(ds.to_arrow()) for ds in task.input_datasets
+                ) if task.input_datasets else 0
+            except Exception:
+                obs_ctx["rows_in"] = 0
+            try:
+                result = self._execute(task)
+                task.output_dataset = result
+                task.status = TaskStatus.DONE
+                try:
+                    obs_ctx["rows_out"] = result.num_rows if hasattr(result, "num_rows") else 0
+                except Exception:
+                    obs_ctx["rows_out"] = 0
+                return result
+            except Exception as exc:
+                task.status = TaskStatus.FAILED
+                task.error = exc
+                raise
 
     # ------------------------------------------------------------------
     # Internal execution logic
