@@ -117,7 +117,7 @@ class Executor:
             if isinstance(sink, WriteParquet) and sink.partition_cols:
                 return _write_hive_parquet(table, sink, task)
             # Table has already been processed; now write
-            part_path = _partition_write_path(sink.path, task.partition_id)
+            part_path = _partition_write_path(sink.path, task.partition_id, task.task_id)
             if isinstance(sink, WriteParquet):
                 os.makedirs(os.path.dirname(os.path.abspath(part_path)), exist_ok=True)
                 pq.write_table(table, part_path, compression=sink.compression)
@@ -455,13 +455,13 @@ def _apply_map_batches(table: pa.Table, fn: Any, batch_size: int) -> pa.Table:
 # ---------------------------------------------------------------------------
 
 
-def _partition_write_path(base_path: str, partition_id: int) -> str:
+def _partition_write_path(base_path: str, partition_id: int, task_id: str = "") -> str:
     """Derive a per-partition output file path."""
+    uid = f"-{task_id}" if task_id else ""
     base, ext = os.path.splitext(base_path)
     if not ext:
-        # Treat as directory
-        return os.path.join(base_path, f"part-{partition_id:05d}.parquet")
-    return f"{base}-part-{partition_id:05d}{ext}"
+        return os.path.join(base_path, f"part-{partition_id:05d}{uid}.parquet")
+    return f"{base}-part-{partition_id:05d}{uid}{ext}"
 
 
 def _write_hive_parquet(
@@ -511,7 +511,7 @@ def _write_hive_parquet(
         data_cols = [c for c in group_table.schema.names if c not in partition_cols]
         group_table = group_table.select(data_cols) if data_cols else group_table
 
-        out_path = os.path.join(hive_dir, f"part-{task.partition_id:05d}.parquet")
+        out_path = os.path.join(hive_dir, f"part-{task.partition_id:05d}-{task.task_id}.parquet")
         pq.write_table(group_table, out_path, compression=sink.compression)
 
     return InMemoryDataset(pa.table({}), task.partition_id)

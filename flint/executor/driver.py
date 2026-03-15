@@ -238,25 +238,34 @@ def _assign_partitions(table: pa.Table, spec: object) -> pa.Array:
         return _hash_partition(table, spec.keys, spec.n_partitions)
 
     if isinstance(spec, EvenPartitionSpec):
-        n = len(table)
-        n_out = spec.n_partitions
-        pids = [int(i * n_out // n) for i in range(n)]
-        return pa.array(pids, type=pa.int32())
+        return _even_partition(table, spec.n_partitions)
 
     if isinstance(spec, UserDefinedPartitionSpec):
-        batches = table.to_batches()
-        if not batches:
-            return pa.array([], type=pa.int32())
-        batch = (
-            batches[0]
-            if len(batches) == 1
-            else pa.concat_tables(
-                [pa.Table.from_batches([b]) for b in batches]
-            ).to_batches()[0]
-        )
-        return spec.fn(batch).cast(pa.int32())
+        return _user_defined_partition(table, spec)
 
     raise NotImplementedError(f"Unknown PartitionSpec type: {type(spec).__name__}")
+
+
+def _even_partition(table: pa.Table, n_out: int) -> pa.Array:
+    """Assign rows to partitions as evenly as possible."""
+    n = len(table)
+    pids = [int(i * n_out // n) for i in range(n)]
+    return pa.array(pids, type=pa.int32())
+
+
+def _user_defined_partition(table: pa.Table, spec: UserDefinedPartitionSpec) -> pa.Array:
+    """Assign rows to partitions using a user-supplied function."""
+    batches = table.to_batches()
+    if not batches:
+        return pa.array([], type=pa.int32())
+    batch = (
+        batches[0]
+        if len(batches) == 1
+        else pa.concat_tables(
+            [pa.Table.from_batches([b]) for b in batches]
+        ).to_batches()[0]
+    )
+    return spec.fn(batch).cast(pa.int32())
 
 
 def _hash_partition(table: pa.Table, keys: List[str], n: int) -> pa.Array:

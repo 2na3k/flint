@@ -13,6 +13,14 @@ Flint uses **DuckDB** and **PyArrow** as the compute backend, with **Ray** for d
 - **Linter/Formatter**: `ruff`
 - **Core dependencies**: `duckdb`, `pyarrow`, `pandas`, `ray`, `fsspec`, `psutil`
 
+## Coding loop
+```text
+1. Writing a new feature
+2. Writing an unit test then run it, and cover the case if anything fail (ALWAYS)
+3. Running integration test (if needed)
+4. Lint and format the codebase
+```
+
 ## Project Structure
 
 ```
