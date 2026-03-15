@@ -8,6 +8,7 @@ import pytest
 from flint.planner.node import (
     EvenPartitionSpec,
     FilterNode,
+    GroupByAggNode,
     HashPartitionSpec,
     JoinNode,
     LimitNode,
@@ -15,6 +16,7 @@ from flint.planner.node import (
     ReadArrow,
     RepartitionNode,
     SelectNode,
+    ShuffleNode,
 )
 from flint.planner.optimizer import (
     FilterFusion,
@@ -178,6 +180,52 @@ def test_limit_pushdown():
     assert isinstance(result, FilterNode)
     assert isinstance(result.children[0], LimitNode)
     assert result.children[0].limit == 5
+
+
+def test_groupby_creates_three_stages():
+    """Source → GroupByAgg should produce 3 stages: source, shuffle, groupby."""
+    source = make_source(4)
+    groupby_node = GroupByAggNode(
+        children=[source],
+        group_keys=["a"],
+        aggregations=[("b", "sum", "b")],
+    )
+    plan = Planner().build(groupby_node)
+    assert len(plan.stages) == 3
+
+
+def test_groupby_shuffle_stage_uses_hash_partition_on_group_key():
+    """The shuffle stage inserted before GroupBy must use HashPartitionSpec with the correct keys."""
+    source = make_source(4)
+    groupby_node = GroupByAggNode(
+        children=[source],
+        group_keys=["a"],
+        aggregations=[("b", "sum", "b")],
+    )
+    plan = Planner().build(groupby_node)
+    # Stage 0: source, Stage 1: shuffle, Stage 2: groupby
+    shuffle_stage = plan.stages[1]
+    assert len(shuffle_stage.pipeline) == 1
+    shuffle_node = shuffle_stage.pipeline[0]
+    assert isinstance(shuffle_node, ShuffleNode)
+    assert isinstance(shuffle_node.partition_spec, HashPartitionSpec)
+    assert shuffle_node.partition_spec.keys == ["a"]
+
+
+def test_groupby_explicit_n_partitions_respected():
+    """n_partitions=2 on GroupByAggNode should flow through to the shuffle and groupby stages."""
+    source = make_source(4)
+    groupby_node = GroupByAggNode(
+        children=[source],
+        group_keys=["a"],
+        aggregations=[("b", "sum", "b")],
+        n_partitions=2,
+    )
+    plan = Planner().build(groupby_node)
+    shuffle_stage = plan.stages[1]
+    groupby_stage = plan.stages[2]
+    assert shuffle_stage.n_partitions == 2
+    assert groupby_stage.n_partitions == 2
 
 
 def test_optimizer_runs_multiple_rules():

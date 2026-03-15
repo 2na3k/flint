@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import pyarrow as pa
 
@@ -86,6 +86,10 @@ class StreamingDataFrame:
 
         node = MapBatchesNode(fn=fn, batch_size=batch_size, output_schema=output_schema)
         return self._with_node(node)
+
+    def groupby(self, *keys: str) -> "GroupedStreamingDataFrame":
+        """Return a GroupedStreamingDataFrame for per-batch aggregation."""
+        return GroupedStreamingDataFrame(self, list(keys))
 
     # ------------------------------------------------------------------
     # Terminal sink methods — register sink and start the blocking loop
@@ -237,3 +241,37 @@ class StreamingDataFrame:
             f"pipeline={[type(n).__name__ for n in self._pipeline]}, "
             f"sinks={[type(s).__name__ for s in self._sinks]})"
         )
+
+
+class GroupedStreamingDataFrame:
+    """Proxy returned by StreamingDataFrame.groupby().
+
+    Aggregations are stateless: each micro-batch is aggregated independently.
+    In distributed mode a merge-reduce pass runs after partition coalescing.
+    """
+
+    def __init__(self, sdf: StreamingDataFrame, keys: List[str]) -> None:
+        self._sdf = sdf
+        self._keys = keys
+
+    def agg(self, aggregations: Dict[str, str]) -> StreamingDataFrame:
+        from flint.planner.node import GroupByAggNode
+
+        agg_list = [(col, fn, col) for col, fn in aggregations.items()]
+        node = GroupByAggNode(group_keys=self._keys, aggregations=agg_list)
+        return self._sdf._with_node(node)
+
+    def count(self) -> StreamingDataFrame:
+        return self.agg({"*": "count"})
+
+    def sum(self, *cols: str) -> StreamingDataFrame:
+        return self.agg({c: "sum" for c in cols})
+
+    def mean(self, *cols: str) -> StreamingDataFrame:
+        return self.agg({c: "mean" for c in cols})
+
+    def min(self, *cols: str) -> StreamingDataFrame:
+        return self.agg({c: "min" for c in cols})
+
+    def max(self, *cols: str) -> StreamingDataFrame:
+        return self.agg({c: "max" for c in cols})

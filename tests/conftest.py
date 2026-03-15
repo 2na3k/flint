@@ -6,6 +6,8 @@ from __future__ import annotations
 import pyarrow as pa
 import pytest
 
+from flint.session import Session
+
 
 def pytest_configure(config):
     config.addinivalue_line(
@@ -25,9 +27,6 @@ def kafka_bootstrap():
     except Exception:
         pytest.skip("Kafka not available — run: docker compose up kafka -d")
     return servers
-
-
-from flint.session import Session
 
 
 @pytest.fixture()

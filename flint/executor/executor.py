@@ -12,6 +12,7 @@ import pyarrow.parquet as pq
 from flint.dataframe import (
     Dataset,
     DuckDBDataset,
+    InMemoryDataset,
 )
 from flint.executor.task import Task, TaskStatus
 from flint.planner.node import (
@@ -61,9 +62,11 @@ class Executor:
             partition_id=task.partition_id,
         ) as obs_ctx:
             try:
-                obs_ctx["rows_in"] = sum(
-                    len(ds.to_arrow()) for ds in task.input_datasets
-                ) if task.input_datasets else 0
+                obs_ctx["rows_in"] = (
+                    sum(len(ds.to_arrow()) for ds in task.input_datasets)
+                    if task.input_datasets
+                    else 0
+                )
             except Exception:
                 obs_ctx["rows_in"] = 0
             try:
@@ -71,7 +74,9 @@ class Executor:
                 task.output_dataset = result
                 task.status = TaskStatus.DONE
                 try:
-                    obs_ctx["rows_out"] = result.num_rows if hasattr(result, "num_rows") else 0
+                    obs_ctx["rows_out"] = (
+                        result.num_rows if hasattr(result, "num_rows") else 0
+                    )
                 except Exception:
                     obs_ctx["rows_out"] = 0
                 return result
@@ -117,7 +122,9 @@ class Executor:
             if isinstance(sink, WriteParquet) and sink.partition_cols:
                 return _write_hive_parquet(table, sink, task)
             # Table has already been processed; now write
-            part_path = _partition_write_path(sink.path, task.partition_id, task.task_id)
+            part_path = _partition_write_path(
+                sink.path, task.partition_id, task.task_id
+            )
             if isinstance(sink, WriteParquet):
                 os.makedirs(os.path.dirname(os.path.abspath(part_path)), exist_ok=True)
                 pq.write_table(table, part_path, compression=sink.compression)
@@ -511,7 +518,9 @@ def _write_hive_parquet(
         data_cols = [c for c in group_table.schema.names if c not in partition_cols]
         group_table = group_table.select(data_cols) if data_cols else group_table
 
-        out_path = os.path.join(hive_dir, f"part-{task.partition_id:05d}-{task.task_id}.parquet")
+        out_path = os.path.join(
+            hive_dir, f"part-{task.partition_id:05d}-{task.task_id}.parquet"
+        )
         pq.write_table(group_table, out_path, compression=sink.compression)
 
     return InMemoryDataset(pa.table({}), task.partition_id)

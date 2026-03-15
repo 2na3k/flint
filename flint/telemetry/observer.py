@@ -45,8 +45,8 @@ _log = get_logger("observer")
 
 
 class EventKind(str, Enum):
-    TASK = "task"        # single executor task (batch)
-    BATCH = "batch"      # one micro-batch cycle (streaming)
+    TASK = "task"  # single executor task (batch)
+    BATCH = "batch"  # one micro-batch cycle (streaming)
 
 
 class EventStatus(str, Enum):
@@ -380,7 +380,11 @@ class StateObserver:
             _log.info(f"[{event.kind.value}] success  {event.job_id}", **base)
         else:
             tb = (
-                "".join(traceback.format_exception(type(event.error), event.error, event.error.__traceback__))
+                "".join(
+                    traceback.format_exception(
+                        type(event.error), event.error, event.error.__traceback__
+                    )
+                )
                 if event.error
                 else ""
             )

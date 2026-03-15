@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import pyarrow as pa
 
@@ -177,10 +177,6 @@ class MicroBatchLoop:
 
     def _execute_pipeline_distributed(self, table: pa.Table) -> pa.Table:
         """Split batch into N partitions, run pipeline in parallel, coalesce."""
-        from flint.dataframe import InMemoryDataset
-        from flint.executor.task import Task
-        from flint.utils import generate_id
-
         spec = self._partition_spec
         effective_n = min(spec.n_partitions, len(table))
         if effective_n <= 1 or self._scheduler is None:
@@ -195,7 +191,16 @@ class MicroBatchLoop:
 
         completed = self._scheduler.submit_batch(tasks)
         parts = [t.output_dataset.to_arrow() for t in completed]
-        return pa.concat_tables(parts) if parts else pa.table({})
+        merged = pa.concat_tables(parts) if parts else pa.table({})
+
+        # Merge-reduce: re-aggregate if pipeline ends with GroupByAggNode
+        from flint.executor.executor import _exec_groupby
+        from flint.planner.node import GroupByAggNode
+
+        if self._pipeline and isinstance(self._pipeline[-1], GroupByAggNode):
+            merged = _exec_groupby(merged, self._pipeline[-1])
+
+        return merged
 
     def _build_tasks(
         self,

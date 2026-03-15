@@ -13,6 +13,7 @@ from flint.utils import make_temp_dir
 
 if TYPE_CHECKING:
     from flint.streaming.dataframe import StreamingDataFrame
+    from flint.streaming.sources import StreamingSource
 
 
 class Session:

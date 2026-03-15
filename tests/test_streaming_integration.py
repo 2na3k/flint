@@ -16,9 +16,7 @@ from typing import List
 import pyarrow as pa
 import pytest
 
-from flint.session import Session
 from flint.streaming.sinks import Sink
-from flint.streaming.sources import StreamingSource
 
 # Consumer rebalance on Kafka 4 takes ~3s on first connection.
 # Tests wait long enough after loop start to guarantee messages are received.

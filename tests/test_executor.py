@@ -104,6 +104,30 @@ def test_groupby_agg(session):
     assert result[result["group"] == "b"]["val"].iloc[0] == 7
 
 
+def test_groupby_multi_partition_correct_totals(session):
+    """Key 'a' split across 3 partitions should still sum correctly after shuffle."""
+    # 6 rows: key "a" gets values 1,2,3 and key "b" gets 4,5,6
+    table = pa.table(
+        {"group": ["a", "b", "a", "b", "a", "b"], "val": [1, 4, 2, 5, 3, 6]}
+    )
+    df = session.from_arrow(table, n_partitions=3).groupby("group").agg({"val": "sum"})
+    result = df.to_pandas().sort_values("group").reset_index(drop=True)
+    assert result[result["group"] == "a"]["val"].iloc[0] == 6
+    assert result[result["group"] == "b"]["val"].iloc[0] == 15
+
+
+def test_groupby_n_partitions_param(session):
+    """groupby with n_partitions=2 should produce 2 output datasets."""
+    table = pa.table({"group": ["x", "y", "x", "y"], "val": [1, 2, 3, 4]})
+    df = (
+        session.from_arrow(table, n_partitions=4)
+        .groupby("group", n_partitions=2)
+        .agg({"val": "sum"})
+    )
+    datasets = df._compute()
+    assert len(datasets) == 2
+
+
 def test_sql_escape_hatch(session):
     table = pa.table({"a": [1, 2, 3]})
     df = session.from_arrow(table).sql("SELECT a, a * 2 AS double_a FROM this")
@@ -285,7 +309,9 @@ class TestPartitionWritePath:
         assert path == "/out/part-00000.parquet"
 
     def test_file_path_includes_task_id(self):
-        path = _partition_write_path("/out/result.parquet", partition_id=2, task_id="xyz")
+        path = _partition_write_path(
+            "/out/result.parquet", partition_id=2, task_id="xyz"
+        )
         assert path == "/out/result-part-00002-xyz.parquet"
 
     def test_file_path_without_task_id(self):
@@ -300,6 +326,7 @@ class TestPartitionWritePath:
     def test_write_parquet_files_have_distinct_names(self, tmp_path, session):
         """Two write_parquet calls to the same dir produce non-colliding files."""
         import os
+
         table = pa.table({"x": [1, 2, 3]})
         out = str(tmp_path / "output")
         os.makedirs(out)

@@ -129,9 +129,10 @@ class GroupedDataFrame:
     No plan node is created until ``.agg()`` (or another aggregation) is called.
     """
 
-    def __init__(self, df: DataFrame, keys: List[str]) -> None:
+    def __init__(self, df: DataFrame, keys: List[str], n_partitions: int = 0) -> None:
         self._df = df
         self._keys = keys
+        self._n_partitions = n_partitions
 
     def agg(self, aggregations: Dict[str, str]) -> DataFrame:
         """Aggregate columns.
@@ -150,6 +151,7 @@ class GroupedDataFrame:
             children=[self._df._node],
             group_keys=self._keys,
             aggregations=agg_list,
+            n_partitions=self._n_partitions,
         )
         return DataFrame._from_node(node, self._df._session)
 
@@ -309,9 +311,9 @@ class DataFrame:
         node = RepartitionNode(children=[self._node], partition_spec=spec)
         return DataFrame._from_node(node, self._session)
 
-    def groupby(self, *keys: str) -> GroupedDataFrame:
+    def groupby(self, *keys: str, n_partitions: int = 0) -> GroupedDataFrame:
         """Return a ``GroupedDataFrame`` for chained aggregation."""
-        return GroupedDataFrame(self, list(keys))
+        return GroupedDataFrame(self, list(keys), n_partitions=n_partitions)
 
     def join(
         self,

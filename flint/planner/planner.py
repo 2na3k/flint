@@ -7,6 +7,7 @@ from typing import List, Optional
 
 from flint.planner.node import (
     BroadcastNode,
+    GroupByAggNode,
     HashPartitionSpec,
     JoinNode,
     Node,
@@ -87,6 +88,8 @@ class Planner:
             return self._process_join(node)
         if isinstance(node, (ShuffleNode, RepartitionNode)):
             return self._process_shuffle(node)
+        if isinstance(node, GroupByAggNode):
+            return self._process_groupby(node)
         if isinstance(node, ReadNode):
             return self._process_source(node)
         return self._process_transform(node)
@@ -164,6 +167,44 @@ class Planner:
         )
         self._stages.append(stage)
         return stage.stage_id
+
+    def _process_groupby(self, node: GroupByAggNode) -> str:
+        """GroupBy — auto-insert hash shuffle on group keys, then local agg stage.
+
+        Stages: [upstream] → [shuffle: HashPartition(keys=group_keys)] → [local groupby]
+        For empty group_keys (global agg) uses n=1 to coalesce all rows first.
+        """
+        source_stage_id = self._process(node.children[0])
+        source_stage = self._get_stage(source_stage_id)
+
+        # Global aggregation (no group keys) must collect all rows to one partition
+        if not node.group_keys:
+            n = 1
+        else:
+            n = (
+                node.n_partitions
+                if node.n_partitions > 0
+                else source_stage.n_partitions
+            )
+
+        spec = HashPartitionSpec(keys=node.group_keys, n_partitions=n)
+        shuffle_node = ShuffleNode(children=[node.children[0]], partition_spec=spec)
+        shuffle_stage = ExecutionStage(
+            stage_id=generate_id(),
+            pipeline=[shuffle_node],
+            depends_on=[source_stage_id],
+            n_partitions=n,
+        )
+        self._stages.append(shuffle_stage)
+
+        groupby_stage = ExecutionStage(
+            stage_id=generate_id(),
+            pipeline=[node],
+            depends_on=[shuffle_stage.stage_id],
+            n_partitions=n,
+        )
+        self._stages.append(groupby_stage)
+        return groupby_stage.stage_id
 
     def _process_join(self, node: JoinNode) -> str:
         """Join — insert shuffles on both sides, then a local join stage."""

@@ -13,7 +13,7 @@ import pytest
 
 from flint.session import Session
 from flint.streaming.loop import MicroBatchLoop
-from flint.streaming.sinks import KafkaSink, Sink, StdioSink
+from flint.streaming.sinks import Sink, StdioSink
 from flint.streaming.sources import StreamingSource
 
 
@@ -417,7 +417,6 @@ class TestStreamingEndToEnd:
     def test_filter_and_select_pipeline(self, tmp_path):
         from flint.planner.node import FilterNode, SelectNode
 
-        session = Session(local=True, temp_dir=str(tmp_path))
         table = pa.table({"value": [1, -1, 2, -2], "name": ["a", "b", "c", "d"]})
         source = FakeSource(table)
         sink = CollectingSink()
@@ -441,8 +440,6 @@ class TestStreamingEndToEnd:
         assert sorted(result.column("value").to_pylist()) == [1, 2]
 
     def test_multiple_sources_concatenated(self, tmp_path):
-        session = Session(local=True, temp_dir=str(tmp_path))
-        schema = pa.schema([pa.field("x", pa.int64())])
         src1 = FakeSource(pa.table({"x": [1, 2]}))
         src2 = FakeSource(pa.table({"x": [3, 4]}))
         sink = CollectingSink()
@@ -563,7 +560,9 @@ class TestDistributedMicroBatch:
         from flint.planner.node import UserDefinedPartitionSpec
         from flint.streaming.loop import _assign_partitions
 
-        fn = lambda batch: pa.array([i % 3 for i in range(len(batch))], type=pa.int32())
+        def fn(batch):
+            return pa.array([i % 3 for i in range(len(batch))], type=pa.int32())
+
         table = pa.table({"v": list(range(9))})
         ids = _assign_partitions(table, UserDefinedPartitionSpec(fn=fn, n_partitions=3))
         assert ids.to_pylist() == [0, 1, 2, 0, 1, 2, 0, 1, 2]
@@ -593,7 +592,7 @@ class TestDistributedMicroBatch:
             loop,
             "_execute_pipeline_distributed",
             wraps=loop._execute_pipeline_distributed,
-        ) as mock_dist:
+        ):
             loop._run_one_batch()
         # effective_n = min(10, 2) = 2, but no scheduler → falls back inside distributed
         assert len(sink.batches) == 1
@@ -603,12 +602,10 @@ class TestDistributedMicroBatch:
     # ------------------------------------------------------------------
 
     def test_distributes_across_partitions(self, tmp_path):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         from flint.dataframe import InMemoryDataset
-        from flint.executor.task import Task
         from flint.planner.node import EvenPartitionSpec
-        from flint.utils import generate_id
 
         table = pa.table({"v": list(range(8))})
         source = FakeSource(table)
@@ -716,7 +713,10 @@ class TestDistributedMicroBatch:
         from flint.planner.node import UserDefinedPartitionSpec
 
         session = self._make_session(tmp_path)
-        fn = lambda batch: pa.array([0] * len(batch), type=pa.int32())
+
+        def fn(batch):
+            return pa.array([0] * len(batch), type=pa.int32())
+
         sdf = session.read_stream(
             FakeSource(pa.table({"v": [1]})),
             n_partitions=4,
@@ -736,8 +736,6 @@ class TestDistributedMicroBatch:
             )
 
     def test_partition_spec_propagates_through_transforms(self, tmp_path):
-        from flint.planner.node import EvenPartitionSpec
-
         session = self._make_session(tmp_path)
         sdf = session.read_stream(FakeSource(pa.table({"v": [1]})), n_partitions=4)
         filtered = sdf.filter("v > 0").map(lambda r: r)
@@ -825,3 +823,123 @@ class TestDistributedMicroBatch:
         )
         with pytest.raises(ValueError, match="JoinNode"):
             sdf._run(batch_interval=0.1)
+
+
+# ---------------------------------------------------------------------------
+# Streaming GroupBy tests
+# ---------------------------------------------------------------------------
+
+
+class TestStreamingGroupBy:
+    def _make_sdf(self, tmp_path, table=None):
+        session = Session(local=True, temp_dir=str(tmp_path))
+        if table is None:
+            table = pa.table({"group": ["a", "b"], "val": [1, 2]})
+        source = FakeSource(table)
+        from flint.streaming.dataframe import StreamingDataFrame
+
+        return StreamingDataFrame(source=source, session=session), session
+
+    def test_groupby_api_immutability(self, tmp_path):
+        """groupby().agg() appends GroupByAggNode; original SDF is unchanged."""
+        from flint.planner.node import GroupByAggNode
+        from flint.streaming.dataframe import GroupedStreamingDataFrame
+
+        sdf, _ = self._make_sdf(tmp_path)
+        gsdf = sdf.groupby("group")
+        assert isinstance(gsdf, GroupedStreamingDataFrame)
+        agged = gsdf.agg({"val": "sum"})
+        assert len(sdf._pipeline) == 0
+        assert len(agged._pipeline) == 1
+        assert isinstance(agged._pipeline[0], GroupByAggNode)
+
+    def test_groupby_shorthand_methods(self, tmp_path):
+        """sum/mean/min/max/count all produce GroupByAggNode."""
+        from flint.planner.node import GroupByAggNode
+
+        table = pa.table({"group": ["a"], "val": [1]})
+        sdf, _ = self._make_sdf(tmp_path, table)
+        for method in ("sum", "mean", "min", "max"):
+            result = getattr(sdf.groupby("group"), method)("val")
+            assert isinstance(result._pipeline[0], GroupByAggNode)
+        count_result = sdf.groupby("group").count()
+        assert isinstance(count_result._pipeline[0], GroupByAggNode)
+
+    def test_groupby_node_not_blocked_by_guard(self, tmp_path):
+        """GroupByAggNode in streaming pipeline should NOT raise from _run() guard."""
+        from flint.planner.node import GroupByAggNode
+        from flint.streaming.dataframe import StreamingDataFrame
+        from unittest.mock import patch
+
+        session = Session(local=True, temp_dir=str(tmp_path))
+        source = FakeSource(pa.table({"group": ["a"], "val": [1]}))
+        sdf = StreamingDataFrame(
+            source=source,
+            session=session,
+            pipeline=[
+                GroupByAggNode(
+                    group_keys=["group"], aggregations=[("val", "sum", "val")]
+                )
+            ],
+            sinks=[],
+        )
+        # Should not raise — guard only blocks ShuffleNode and JoinNode
+        with patch.object(sdf, "_run"):
+            sdf.write_stdio()
+
+    def test_groupby_single_threaded_correctness(self, tmp_path):
+        """Per-batch groupby produces correct aggregated result in single-partition path."""
+        from flint.planner.node import GroupByAggNode
+
+        table = pa.table({"group": ["a", "a", "b", "b"], "val": [1, 2, 3, 4]})
+        source = FakeSource(table)
+        sink = CollectingSink()
+        pipeline = [
+            GroupByAggNode(group_keys=["group"], aggregations=[("val", "sum", "val")])
+        ]
+
+        loop = MicroBatchLoop(
+            sources=[source],
+            pipeline=pipeline,
+            sinks=[sink],
+            batch_size=10,
+            temp_dir=str(tmp_path),
+        )
+        loop._run_one_batch()
+
+        assert len(sink.batches) == 1
+        result = sink.batches[0].to_pandas().sort_values("group").reset_index(drop=True)
+        assert result[result["group"] == "a"]["val"].iloc[0] == 3
+        assert result[result["group"] == "b"]["val"].iloc[0] == 7
+
+    def test_groupby_distributed_merge_reduce(self, tmp_path):
+        """Distributed path with EvenPartitionSpec(n=3) gives correct global totals after merge."""
+        from flint.executor.scheduler import Scheduler
+        from flint.planner.node import EvenPartitionSpec, GroupByAggNode
+
+        table = pa.table(
+            {"group": ["a", "b", "a", "b", "a", "b"], "val": [1, 4, 2, 5, 3, 6]}
+        )
+        source = FakeSource(table)
+        sink = CollectingSink()
+        scheduler = Scheduler(local=True, n_workers=3)
+
+        pipeline = [
+            GroupByAggNode(group_keys=["group"], aggregations=[("val", "sum", "val")])
+        ]
+        loop = MicroBatchLoop(
+            sources=[source],
+            pipeline=pipeline,
+            sinks=[sink],
+            batch_size=10,
+            temp_dir=str(tmp_path),
+            partition_spec=EvenPartitionSpec(n_partitions=3),
+            scheduler=scheduler,
+        )
+        loop._run_one_batch()
+        scheduler.stop()
+
+        assert len(sink.batches) == 1
+        result = sink.batches[0].to_pandas().sort_values("group").reset_index(drop=True)
+        assert result[result["group"] == "a"]["val"].iloc[0] == 6
+        assert result[result["group"] == "b"]["val"].iloc[0] == 15

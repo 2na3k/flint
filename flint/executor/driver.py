@@ -253,7 +253,9 @@ def _even_partition(table: pa.Table, n_out: int) -> pa.Array:
     return pa.array(pids, type=pa.int32())
 
 
-def _user_defined_partition(table: pa.Table, spec: UserDefinedPartitionSpec) -> pa.Array:
+def _user_defined_partition(
+    table: pa.Table, spec: UserDefinedPartitionSpec
+) -> pa.Array:
     """Assign rows to partitions using a user-supplied function."""
     batches = table.to_batches()
     if not batches:

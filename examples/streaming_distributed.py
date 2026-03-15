@@ -201,9 +201,9 @@ def scenario_ray_distributed():
     print(f"  Connecting to Ray cluster at {RAY_ADDRESS}")
     print("═" * 64)
 
-    try:
-        import ray
-    except ImportError:
+    import importlib.util
+
+    if importlib.util.find_spec("ray") is None:
         print("\n  ✗ Ray not installed.  Run:  uv add ray")
         return
 

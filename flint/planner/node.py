@@ -218,6 +218,7 @@ class GroupByAggNode(Node):
 
     group_keys: List[str] = field(default_factory=list)
     aggregations: List[Tuple[str, str, str]] = field(default_factory=list)
+    n_partitions: int = 0  # 0 = inherit from upstream stage
 
 
 @dataclass
